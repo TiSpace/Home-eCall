@@ -243,7 +243,9 @@ void loop() {
   if (!MQTT_Client.connected())
   {
 
+#ifndef Sender
     reconnect(); //der Empfänger muss immer lauschen
+#endif
 
   }
 #endif
