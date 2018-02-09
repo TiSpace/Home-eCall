@@ -1,21 +1,24 @@
-/*  Notrufsender
-    - Taste Alarm setzt via MQTT das Alarmflag
-    - Taste REset kann Alarm zurücksetzten
-    - beim Sender wird Batteriestatus gemessen und übermittelt
-    - Sender geht in Modem Sleep und wacht nur bei Tastenbetätigung auf
+/*
+ *    Home eCall
+ *    Emergency button connected via wifi to MQTT server
+ *    
+ *    function
+ *    - alarm button sets alarmflag               -> MQTT:  Notruf/Alarm
+ *    - during alarm will be saved, too
+ *      * the time                                -> MQTT:  Notruf/Zeit
+ *      * battery voltage                         -> MQTT:  Notruf/BatterieSpg
+ *      * time of battery measurement             -> MQTT:  Notruf/BatterieZeit
+ *    - pressing reset button will reset alarm
+ *    - transmitter will go to modem sleep in order to reduce current consumption from ~80mA to 20mA
+ *      and extend battery life time. Wake up only triggered by pressing a button
+ *    - wifi setting is done on start based on Wifimanager-library
+ *    
+ *    setting
+ *    - define unique ID                                        -> MQTT_ClientID 
+ *    - define if device has to act as sender (battery driven)  -> #define   Sender
+ *    - setup MQTT parameters
+ */
 
-    Konfiguration
-    - SSID/PW
-    - Sender oder Empfänger
-    - MQTT_ClientID muß einzigartig sein
-
-    Historie:
-    V00: funktionale FW
-    V01: Wifi-Manager anstatt fixer SSID/PW und AP-Setting on Demand
-    V02: subscibtion der LED läuft
-         warning low battery-feedback (LED+buzzer)
-
-*/
 
 
 
@@ -62,9 +65,9 @@ void setup() {
 
   pinMode(LED_rot, OUTPUT);
   pinMode(LED_Warn, OUTPUT);
-  pinMode(TasteAlarm, INPUT);   // gedrückt =0
-  pinMode(TasteReset, INPUT);   // gedrückt =0
-  pinMode(TasteWifi, INPUT);    // um WIFI-Setting zurückzusetzten
+  pinMode(TasteAlarm, INPUT);   // pressed =0
+  pinMode(TasteReset, INPUT);   // pressed =0
+  pinMode(TasteWifi, INPUT);    // to reset wifi
 
   digitalWrite(LED_rot, HIGH);
   digitalWrite(LED_Warn, HIGH);
@@ -99,16 +102,9 @@ void setup() {
 
 }
 /*  ---------------------------------------------------------------------------
-                      Hauptschleife
+                      main loop
 */
 void loop() {
-
-  //  while(1){
-  //int voltageBattery = measureADC(10);  // messe und mittle ADC-Spannung
-  //
-  //Serial << voltageBattery << "  Spannung: "  << (float)voltageBattery * Aufloesung << "V" << endl;
-  //delay(500);
-  //  }
 
   Taste[0] = digitalRead(TasteAlarm);
   Taste[1] = digitalRead(TasteReset);
@@ -129,7 +125,7 @@ void loop() {
 
 
 
-  int voltageBattery = measureADC(10);  // messe und mittle ADC-Spannung
+  int voltageBattery = measureADC(10);  // measure and average ADC
 
   // evaluate battery of the remote sender
 #ifndef Sender
@@ -158,10 +154,7 @@ void loop() {
 
   String strZeit ;
 #ifdef Sender
-
-
   if (((Taste[0] == 0 || Taste[1] == 0) && ((Taste[0] != TastePrev[0]) || (Taste[1] != TastePrev[1] ))) || (millis() - timeRefresh) > refreshTime)   {
-
 #if (enBuzAlarm==1)
     digitalWrite(LED_Warn, HIGH); //turn off buzzer
 #endif
@@ -171,9 +164,9 @@ void loop() {
 
     // mit dem MQTT Server verbinden
 
-    Serial << "Tasten" << Taste[0] << "(" << TastePrev[0] << ")  " << Taste[1] << "(" << TastePrev[1] << ")  " << endl;
+    //Serial << "Tasten" << Taste[0] << "(" << TastePrev[0] << ")  " << Taste[1] << "(" << TastePrev[1] << ")  " << endl;
     WiFi.forceSleepWake();
-    Serial.println("aufgewacht");
+    Serial.println("-- woke up");
     delay(500);
 
     verbinde();
@@ -194,6 +187,11 @@ void loop() {
     timeRefresh = millis();
   }
 #endif
+
+#ifndef Sender
+    reconnect();  // establish MQTT connection as well
+#endif
+
 
   // Taste0 auswerten   ->  Button Notruf
   if (Taste[0] == 0 && (Taste[0] != TastePrev[0])) {
@@ -230,23 +228,20 @@ void loop() {
   TastePrev[1] = Taste[1];
 
 
-  MQTT_Client.loop(); //erlaube Subsrcibes zu holen
+  MQTT_Client.loop(); //get subscribes
 
 #ifdef Sender
   if ((millis() - timeSinceActive) > subsAftAct) { //allow to subscribe within a time window of xx sec and receive messages
     WiFi.forceSleepBegin();
-    //Serial.println("schlafe wieder");
     delay(100);
   }
 
-  // mit dem MQTT Server verbinden
+  // connect to MQTT
   if (!MQTT_Client.connected())
   {
-
 #ifndef Sender
-    reconnect(); //der Empfänger muss immer lauschen
+    reconnect(); //er Empfänger muss immer lauschreceiver has to listen
 #endif
-
   }
 #endif
   MQTT_Client.loop();
@@ -274,9 +269,10 @@ void reconnect() {
     } else {
       Serial.print("failed, rc=");
       Serial.print(MQTT_Client.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
+      Serial.println(" try again in 2 seconds");
+      
+      delay(2000);                              // Wait 2 seconds before retrying
+
     }
   }
 }
@@ -357,19 +353,8 @@ void verbinde() {
      purpose: get time from NTP server and prepare data
 */
 void getTimeFromNTP() {
-  //Serial.println("Zeit angefordert");
-
   timeClient.update();        // hole Zeit von NTP
-  // Serial.println(timeClient.getFormattedTime());  //formatierte Zeit
-  /*
 
-    sPrintI00(timeClient.getHours());
-    sPrintI00(timeClient.getMinutes());
-    sPrintI00(timeClient.getSeconds());
-    sPrintI00(timeClient.getYear());
-    sPrintI00(timeClient.getMonth());
-    sPrintI00(timeClient.getDate());
-  */
 }
 
 /* --------------------------------------------------------------------------------
