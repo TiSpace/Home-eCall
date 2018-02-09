@@ -2,14 +2,12 @@
  * 		Settings
 */
 
-//siehe auch http://blue-pc.net/2014/10/15/mqtt-nachrichten-mit-dem-arduino-empfangen-senden/
-// https://www.cs.auckland.ac.nz/references/unix/digital/AQTLTBTE/DOCU_154.HTM#book-index
 
 #define   myBaudRate	38400
 
 #define   myVersion "Notruf V2"
 
-#define   MQTT_ClientID "ESP8266Client01" //muß ein einmaliger Name sein
+#define   MQTT_ClientID "ESP8266Client01" //needs to be an unique identifier
 #define   Sender
 
 
